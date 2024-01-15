@@ -1,0 +1,466 @@
+index.php
+<?php
+session_start(); // Start a new session or resume the existing one.
+
+// Check if the user is logged in, if not then redirect to login page
+if(!isset($_SESSION["loggedin"]) || $_SESSION["loggedin"] !== true){
+    header("location: loginpage.php");
+    exit;
+}
+
+require_once 'config.php'; // Include the database configuration file.
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- The head section contains meta tags for responsiveness and the title, and links the stylesheet -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTweet</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Banner section with the application name -->
+    <div class="banner">MyTweet</div>
+    <!-- Main container for tweets and other content -->
+    <div class="container">
+        <!-- Header section with the user's avatar and username, and buttons for tweeting and logging out -->
+        <div class="header">
+            <div class="editable-container">
+                <img src="1.png" alt="User Avatar" class="header-avatar">
+                <span>@</span>
+                <!-- Display the logged-in username -->
+                <span id="username" class="editable" contenteditable="false"><?php echo htmlspecialchars($_SESSION["username"]); ?></span>
+            </div>
+            <div class="button-container">
+                <!-- Buttons for creating a new tweet and logging out -->
+                <button id="tweetButton">Tweet</button>
+                <button id="logoutButton">Logout</button>
+            </div>
+        </div>
+        <!-- Sample tweets displayed on the page -->
+        <!-- Each tweet has an avatar, username, timestamp, and message content -->
+        <!-- This structure is repeated for each tweet -->
+        <div class="tweet">
+            <div class="avatar">
+                <img src="2.png" alt="User Avatar" style="width: 50px; height: 50px;">
+            </div>
+            <div class="content">
+                <div class="username">@Mark Anthony M Cang</div>
+                <div class="timestamp">420 days ago</div>
+                <div class="message">Kaya rani i chat gpt</div>
+            </div>
+        </div>
+        <!-- Additional tweets here... -->
+    </div>
+    <!-- Hidden container for new tweet input, shown when the 'Tweet' button is clicked -->
+    <div id="tweetInputContainer">
+        <div id="tweetInputBox" class="cleafix">
+            <textarea id="tweetContent" rows="4" cols="50"></textarea>
+            <button id="cancelTweet" class="tweet-action-btn">Cancel</button>
+            <button id="sendTweet">Post</button>
+        </div>
+    </div>
+    <!-- Link to the JavaScript file that adds interactivity to the page -->
+    <script src="script.js"></script>
+</body>
+</html>
+
+config.php
+<?php
+// Database configuration settings
+$host = "localhost";
+$dbUsername = "root";
+$dbPassword = "";
+$database = "social_media_teves";
+
+// Create connection to the MySQL server
+$conn = new mysqli($host, $dbUsername, $dbPassword);
+
+// Check for a connection error and display the error message if any
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// SQL statement to create a new database if it doesn't exist
+$sql = "CREATE DATABASE IF NOT EXISTS $database";
+if ($conn->query($sql) !== TRUE) {
+    die("Error creating database: " . $conn->error);
+}
+
+// Select the newly created database for use
+$conn->select_db($database);
+
+// SQL statement to create a new table for users if it doesn't exist
+$sql = "CREATE TABLE IF NOT EXISTS users (
+    id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(30) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL, 
+    reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)";
+
+// Execute the query to create the table and check for errors
+if ($conn->query($sql) !== TRUE) {
+    die("Error creating table: " . $conn->error);
+}
+?>
+
+loginpage.php
+<?php
+// Start or resume a session
+session_start();
+
+// Include the database configuration file
+include 'config.php';
+
+// Check if the user is already logged in and redirect to the main page if true
+if(isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true){
+    header("location: index.php");
+    exit;
+}
+
+// Initialize variables for username and password errors
+$username = $password = "";
+$username_err = $password_err = "";
+
+// Process the form data when the form is submitted
+if($_SERVER["REQUEST_METHOD"] == "POST"){
+
+    // Validate the username
+    if(empty(trim($_POST["username"]))){
+        $username_err = "Please enter username.";
+    } else{
+        $username = trim($_POST["username"]);
+    }
+    
+    // Validate the password
+    if(empty(trim($_POST["password"]))){
+        $password_err = "Please enter your password.";
+    } else{
+        $password = trim($_POST["password"]);
+    }
+    
+    // If there were no errors, prepare a select statement
+    if(empty($username_err) && empty($password_err)){
+        $sql = "SELECT id, username, password FROM users WHERE username = ?";
+        
+        // Prepare the SQL statement
+        if($stmt = mysqli_prepare($conn, $sql)){ 
+
+            // Bind variables to the prepared statement as parameters
+            mysqli_stmt_bind_param($stmt, "s", $param_username);
+
+            // Set parameters and execute the statement
+            $param_username = $username;
+            if(mysqli_stmt_execute($stmt)){
+                // Store the result so we can check if the username exists in the database
+                mysqli_stmt_store_result($stmt);
+                
+                // Check if the username exists, if yes then verify the password
+                if(mysqli_stmt_num_rows($stmt) == 1){                    
+                    mysqli_stmt_bind_result($stmt, $id, $username, $hashed_password);
+                    if(mysqli_stmt_fetch($stmt)){
+                        // If the password is correct, start a new session and save user data in session variables
+                        if(password_verify($password, $hashed_password)){
+                            session_start();
+                            $_SESSION["loggedin"] = true;
+                            $_SESSION["id"] = $id;
+                            $_SESSION["username"] = $username;                            
+                            header("location: index.php");
+                        } else{
+                            // Display an error message if password is not valid
+                            $password_err = "The password you entered was not valid.";
+                        }
+                    }
+                } else{
+                    // Display an error message if username doesn't exist
+                    $username_err = "No account found with that username.";
+                }
+            } else{
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+
+            // Close the statement
+            mysqli_stmt_close($stmt);
+        }
+    }
+    
+    // Close the connection
+    mysqli_close($conn);
+}
+?>
+
+logout.php
+<?php
+// Start or resume the session
+session_start();
+
+// Unset all of the session variables
+session_unset();
+
+// Destroy the session
+session_destroy();
+
+// Redirect to login page
+header("Location: loginpage.php");
+exit;
+?>
+
+register.php
+<?php
+
+// Include the database configuration file
+require_once 'config.php';
+
+// Initialize variables for username and password
+$username = $password = "";
+$username_err = $password_err = "";
+
+// Process the data when the form is submitted
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    // Validate the username
+    if (empty(trim($_POST["username"]))) {
+        $username_err = "Please enter a username.";
+    } else {
+        // Prepare a select statement to check if the username already exists
+        $sql = "SELECT id FROM users WHERE username = ?";
+        
+        if ($stmt = $conn->prepare($sql)) {
+            // Bind variables to the prepared statement as parameters
+            $stmt->bind_param("s", $param_username);
+            $param_username = trim($_POST["username"]);
+            
+            // Attempt to execute the prepared statement
+            if ($stmt->execute()) {
+                // Store result
+                $stmt->store_result();
+                
+                // Check if username exists, if yes then set an error message
+                if ($stmt->num_rows == 1) {
+                    $username_err = "This username is already taken.";
+                } else {
+                    $username = trim($_POST["username"]);
+                }
+            } else {
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+            // Close statement
+            $stmt->close();
+        }
+    }
+    
+    // Validate password
+    if (empty(trim($_POST["password"]))) {
+        $password_err = "Please enter a password.";
+    } else {
+        $password = trim($_POST["password"]);
+    }
+
+    // Check input errors before inserting in database
+    if (empty($username_err) && empty($password_err)) {
+        // Prepare an insert statement
+        $sql = "INSERT INTO users (username, password) VALUES (?, ?)";
+        
+        if ($stmt = $conn->prepare($sql)) {
+            // Bind variables to the prepared statement as parameters
+            $stmt->bind_param("ss", $param_username, $param_password);
+            
+            // Set parameters and hash the password before saving it
+            $param_username = $username;
+            $param_password = password_hash($password, PASSWORD_DEFAULT);
+
+            // Attempt to execute the prepared statement
+            if ($stmt->execute()) {
+                // Redirect to login page
+                header("location: loginpage.php");
+                exit;
+            } else {
+                echo "Oops! Something went wrong. Please try again later.";
+            }
+            // Close statement
+            $stmt->close();
+        }
+    }
+    
+    // Close connection
+    $conn->close();
+}
+?>
+
+
+script.js
+// Wait for the DOM to be loaded before executing the script
+document.addEventListener('DOMContentLoaded', function() {
+    // Get references to page elements
+    var tweetButton = document.getElementById('tweetButton');
+    var tweetInputContainer = document.getElementById('tweetInputContainer');
+    var sendTweetButton = document.getElementById('sendTweet');
+    var tweetContent = document.getElementById('tweetContent');
+    var tweetsContainer = document.querySelector('.container');
+    var editButton = document.getElementById('editButton');
+    var username = document.getElementById('username');
+    var userAvatar = document.querySelector('.header-avatar');
+    var cancelTweetButton = document.getElementById('cancelTweet');
+
+    // Function to limit the length of the username
+    function limitUsernameLength(event) {
+        if (username.textContent.length >= 15 && event.key !== 'Backspace' && event.key !== 'Delete') {
+            event.preventDefault();
+        }
+    }
+
+    // Event listener for the tweet button to show the tweet input container
+    tweetButton.addEventListener('click', function() {
+        tweetInputContainer.style.display = 'flex';
+    });
+
+    // Event listeners to enforce character limit for username
+    username.addEventListener('keypress', limitUsernameLength);
+    username.addEventListener('paste', function(e) {
+        var pasteData = e.clipboardData.getData('text/plain');
+        if (username.textContent.length + pasteData.length > 15) {
+            e.preventDefault();
+        }
+        else if (pasteData.length > 15) {
+            e.preventDefault();
+            document.execCommand('insertText', false, pasteData.substring(0, 15));
+        }
+    }); 
+
+    // Event listener for the send tweet button to create and add a new tweet to the page
+    sendTweetButton.addEventListener('click', function() {
+        var content = tweetContent.value.trim();
+        var currentUsername = username.textContent; 
+        var avatarSrc = userAvatar.getAttribute('src'); 
+        if(content) {
+            var newTweet = document.createElement('div');
+            newTweet.classList.add('tweet');
+            newTweet.innerHTML = `
+                <div class="avatar">
+                    <img src="${avatarSrc}" alt="User Avatar" style="width: 50px; height: 50px;">
+                </div>
+                <div class="content">
+                    <div class="username">@${currentUsername}</div>
+                    <div class="timestamp">Just now</div>
+                    <div class="message">${content}</div>
+                </div>
+            `;
+            tweetsContainer.appendChild(newTweet);
+            tweetContent.value = '';
+            tweetInputContainer.style.display = 'none';
+        }
+    });
+
+    // Event listener for the cancel tweet button to hide the tweet input container
+    cancelTweetButton.addEventListener('click', function() {
+        tweetInputContainer.style.display = 'none'; 
+        tweetContent.value = '';
+    });
+
+    // Event listener to toggle content editability for username
+    editButton.addEventListener('click', function() {
+        var isEditable = username.isContentEditable;
+        username.contentEditable = !isEditable;
+        if (isEditable) {
+            editButton.textContent = 'Edit';
+            editButton.classList.remove('red-button'); 
+        } else {
+            editButton.textContent = 'Save';
+            editButton.classList.add('red-button');
+        }
+    });
+});
+
+// Event listener for the logout button to redirect to the logout script
+document.getElementById('logoutButton').addEventListener('click', function() {
+    window.location = 'logout.php';
+});
+
+
+style.css
+body {
+    font-family: Arial, sans-serif; /* Set the default font for the body */
+    background: #f0f0f0; /* Set a light gray background color */
+    margin: 0; /* Remove default margin */
+    padding: 20px; /* Add padding around the content of the body */
+    background-image: url("background.png"); /* Set a background image for the body */
+}
+body, html {
+    height: 100%; /* Make sure the html and body take up the full height of the page */
+    margin: 0; /* Reset default margin */
+    font-family: Arial, sans-serif; /* Ensure the font family is consistent */
+    background: url("background.png") no-repeat center center fixed; /* Apply a background image, centered and fixed in place */
+    background-size: cover; /* Ensure the background image covers the entire viewport */
+}
+.container {
+    max-width: 30%; /* Limit the width of the container to 30% of the viewport width */
+    margin: auto; /* Center the container horizontally */
+    background: #fff; /* Set a white background for the container */
+    border-radius: 8px; /* Round the corners of the container */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Apply a subtle shadow to the container */
+    overflow: hidden; /* Hide any content that overflows the container's box */
+}
+.header {
+    background: #0084ff; /* Set a blue background for the header */
+    color: white; /* Set the text color to white */
+    padding: 20px; /* Add padding inside the header */
+    text-align: center; /* Center the text inside the header */
+    font-size: 24px; /* Set the font size for the header */
+    position: relative; /* Use relative positioning as a context for absolutely positioned child elements */
+    display: flex; /* Use flexbox for layout */
+    align-items: center; /* Vertically center items in the header */
+    justify-content: space-between; /* Distribute space between items in the header */
+    padding-right: 20px; /* Add padding on the right of the header */
+}
+.header-avatar {
+    width: 50px; /* Set a fixed width for the user avatar */
+    height: 50px; /* Set a fixed height for the user avatar */
+    border-radius: 50%; /* Make the avatar circular */
+    object-fit: cover; /* Ensure the image covers the element's box without stretching */
+    margin-right: 10px; /* Add margin to the right of the avatar */
+}
+.button-container {
+    display: flex; /* Use flexbox for layout */
+    flex-direction: column; /* Stack the buttons vertically */
+    align-items: flex-end; /* Align the buttons to the end (right) */
+    gap: 10px; /* Add space between the buttons */
+}
+.header button {
+    border: none; /* Remove the default border from buttons */
+    background: #007bff; /* Set a blue background for the buttons */
+    color: white; /* Set the text color to white */
+    font-size: 16px; /* Set the font size for the text in the buttons */
+    cursor: pointer; /* Change the mouse cursor to indicate the buttons are clickable */
+    padding: 8px 16px; /* Add padding inside the buttons */
+    border-radius: 20px; /* Round the corners of the buttons */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Apply a shadow to the buttons */
+    text-align: center; /* Center the text inside the buttons */
+    width: 80px; /* Set a fixed width for the buttons */
+}
+@media screen and (max-width: 768px) {
+    .header {
+        font-size: 18px; /* Decrease the font size for smaller screens */
+        padding: 10px; /* Decrease the padding inside the header */
+    }
+    .header-avatar {
+        width: 40px; /* Decrease the size of the avatar for smaller screens */
+        height: 40px;
+    }
+    .banner {
+        font-size: 24px; /* Decrease the font size of the banner text */
+    }
+}
+@media screen and (max-width: 480px) {
+    .container, .banner {
+        max-width: 90%; /* Make the container and banner use up to 90% of the screen width */
+    }
+    .header button, .tweet-action-btn, #sendTweet, #cancelTweet {
+        padding: 5px 10px; /* Reduce padding inside buttons for smaller screens */
+        font-size: 14px; /* Reduce the font size of text inside buttons */
+    }
+    .tweet {
+        padding: 10px; /* Reduce the padding inside each tweet for smaller screens */
+    }
+}
